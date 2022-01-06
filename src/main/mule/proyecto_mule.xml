@@ -1,5 +1,117 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd"></mule>
+<mule xmlns:json="http://www.mulesoft.org/schema/mule/json" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:xml-module="http://www.mulesoft.org/schema/mule/xml-module"
+	xmlns:wsc="http://www.mulesoft.org/schema/mule/wsc" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/wsc http://www.mulesoft.org/schema/mule/wsc/current/mule-wsc.xsd
+http://www.mulesoft.org/schema/mule/xml-module http://www.mulesoft.org/schema/mule/xml-module/current/mule-xml-module.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/json http://www.mulesoft.org/schema/mule/json/current/mule-json.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="3e6d30f7-838c-41d4-a342-b12e4ea3645e">
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<wsc:config name="Web_Service_Consumer_Config" doc:name="Web Service Consumer Config" doc:id="91a63709-138d-44ec-95fe-9c1124efc04d" >
+		<wsc:connection wsdlLocation="http://3.249.81.123:8080/ws/ciudadanos.wsdl" service="CiudadanosPortService" port="CiudadanosPortSoap11" address="http://3.249.81.123:8080/ws/ciudadanos" >
+			<wsc:web-service-security actor="http://schemas.xmlsoap.org/soap/actor/next" />
+		</wsc:connection>
+	</wsc:config>
+	<wsc:config name="Web_Service_Consumer_Config1" doc:name="Web Service Consumer Config" doc:id="186b3ab3-8ea9-4c53-80ed-503d601b87c0" >
+		<wsc:connection wsdlLocation="http://3.249.81.123:8080/ws/direcciones.wsdl" service="DireccionesPortService" port="DireccionesPortSoap11" address="http://3.249.81.123:8080/ws/direcciones" />
+	</wsc:config>
+	<flow name="proyecto_muleFlow" doc:id="901c586c-6b9d-4e7d-9ac5-1154fd4ea4c6" >
+		<http:listener doc:name="entrada" doc:id="44430e03-8c7d-4540-a016-b9b4ee6e9d8f" config-ref="HTTP_Listener_config" path="/ciudadano/{id}"/>
+		<wsc:consume doc:name="servicio ciudadano" doc:id="90bf217b-1235-401f-8f87-730dac8ef008" config-ref="Web_Service_Consumer_Config" operation="getCiudadano">
+			<wsc:message >
+				<wsc:body ><![CDATA[#[output application/xml
+ns ns0 http://cvaintegra.com/ciudadano
+---
+{
+  ns0#getCiudadanoRequest: {
+    ns0#id: attributes.uriParams.id as String
+  }
+}]]]></wsc:body>
+			</wsc:message>
+		</wsc:consume>
+		<xml-module:validate-schema doc:name="validacion ciudadano" doc:id="37c168de-9b35-4c9d-8c5e-9909d6e4dd74" schemas="schemas\ciudadano.xsd">
+			<xml-module:content ><![CDATA[#[payload.body]]]></xml-module:content>
+		</xml-module:validate-schema>
+		<choice doc:name="Choice" doc:id="eebd6c6d-7ca4-4bc7-bb33-4fed40bc4f73" >
+			<when expression="#[%dw 2.0&#10;ns ns0 http://cvaintegra.com/ciudadano&#10;---&#10;payload.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#nombre != null]">
+				<set-variable value="#[payload]" doc:name="datos" doc:id="0aef0ab6-3a69-4742-9e82-b43f0a78fca8" variableName="datos"/>
+				<wsc:consume operation="getDireccion" doc:name="servicio direccion" doc:id="c94913e4-83f5-4312-92e6-30e82129803d" config-ref="Web_Service_Consumer_Config1">
+					<wsc:message >
+						<wsc:body ><![CDATA[#[output application/xml
+ns ns0 http://cvaintegra.com/direccion
+ns ns01 http://cvaintegra.com/ciudadano
+---  
+  
+{
+  ns0#getDireccionRequest: {
+    ns0#id: (payload.body.ns01#getCiudadanoResponse.ns01#ciudadano.ns01#direccion default "")
+ }
+}]]]></wsc:body>
+					</wsc:message>
+				</wsc:consume>
+				<xml-module:validate-schema doc:name="validacion direccion" doc:id="dae4a116-3405-434b-8198-902e986960db" schemas="schemas\direccion.xsd">
+					<xml-module:content ><![CDATA[#[payload.body]]]></xml-module:content>
+				</xml-module:validate-schema>
+				<ee:transform doc:name="json" doc:id="a533a876-1efc-48f5-bfe0-485e764807db" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+ns ns0 http://cvaintegra.com/ciudadano
+ns ns1 http://cvaintegra.com/direccion
+
+output application/json
+---
+{
+
+        '1ernombre': ((vars.datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#nombre default "") splitBy(' '))[0],
+        '2donombre': ((vars.datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#nombre default "") splitBy(' '))[1],
+        '1erapellido': ((vars.datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#apellidos default "") splitBy(' '))[0],
+        '2doapellido': ((vars.datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#apellidos default "") splitBy(' '))[1],
+        'pais': vars.datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#pais,
+        'prov': vars.datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#provincia,
+        'mun': vars.datos.body.ns0#getCiudadanoResponse.ns0#ciudadano.ns0#municipio,
+        'direccion': {
+          'calle': payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#calle,
+          'entrecalles':(payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#entreCalle1) ++ (" y ") ++ (payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#entreCalle2),
+          'apto': payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#apto,
+          'num': payload.body.ns1#getDireccionResponse.ns1#direccion.ns1#numero
+        }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+				<json:validate-schema doc:name="Validate schema" doc:id="abd3c540-2e52-40d9-b8de-127b072a2911" schema="ciudadano.json"/>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="Transform Message" doc:id="3f1a3685-cca2-41ac-922b-bc360215833c" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"response":"no hay datos"
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<error-handler >
+			<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="06b4559d-214a-4c30-be07-9e9a710f496d" type="JSON:SCHEMA_NOT_HONOURED">
+				<ee:transform doc:name="Transform Message" doc:id="6320768a-cf8a-48bc-8cf1-e304d10d79a3" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+  errorDetails: using (errorMsg = error.errorMessage.payload[0]){
+    errorMessage:errorMsg.message
+  }
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</on-error-propagate>
+		</error-handler>
+	</flow>
+</mule>
